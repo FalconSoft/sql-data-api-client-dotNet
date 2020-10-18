@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Authors>Pavlo Paska</Authors>
+    <Product>Falconsoft Sql Data Api</Product>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>FalconSoft Ltd</Copyright>
+    <Description>.Net Core client for SQL Data Api</Description>
+    <RepositoryUrl>https://github.com/FalconSoft/sql-data-api-client-dotNet</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/FalconSoft/sql-data-api-client-dotNet</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+  </ItemGroup>
+
+</Project>
