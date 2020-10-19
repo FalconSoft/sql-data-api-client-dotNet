@@ -24,15 +24,16 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         [Fact]
         public void Test1()
         {
-            SqlDataApi.SetBaseUrl("https://worksheets-web-api-5.azurewebsites.net");
-            SqlDataApi.SetAuthentication("test1", "1234567");
+            SqlDataApi.SetBaseUrl("https://localhost:44308");
+            SqlDataApi.SetAuthentication("pp12-token-21pp");
 
             var items = SqlDataApi
                 .Create("public-data-connect")
                 .TableOrView("publicData.Sample100")
+                .Filter("Country = @country", new { country = "UK"})
                 .RunQuery<TestObject>();
 
-            Assert.Equal(100, items.Count);
+            Assert.Equal(7, items.Count);
 
             items[0].OrderQuantity = items[0].OrderQuantity + 10;
             var status = SqlDataApi

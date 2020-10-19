@@ -31,7 +31,7 @@ namespace FalconSoft.SqlDataApi.Client
 
         ISqlDataApi Select(string fields);
 
-        ISqlDataApi Filter<T>(string filterString, T filterParams = null) where T : class;
+        ISqlDataApi Filter(string filterString, object filterParams = null);
 
         ISqlDataApi OrderBy(string orderByString);
 
@@ -51,6 +51,7 @@ namespace FalconSoft.SqlDataApi.Client
         private static Tuple<string, string> _upass;
         private static string _authenticationToken;
         private static string _baseUrl;
+        private static string _accessToken;
 
         private readonly string _connectionName;
 
@@ -61,6 +62,10 @@ namespace FalconSoft.SqlDataApi.Client
         public static void SetAuthentication(string userName, string password)
         {
             _upass = Tuple.Create(userName, password);
+        }
+        public static void SetAuthentication(string accessToken)
+        {
+            _accessToken = accessToken;
         }
 
         public static void SetBaseUrl(string baseUrl)
@@ -78,9 +83,19 @@ namespace FalconSoft.SqlDataApi.Client
             return new SqlDataApi(connectionName) as ISqlDataApi;
         }
 
-        public ISqlDataApi Filter<T>(string filterString, T filterParams = null) where T : class
+        public ISqlDataApi Filter(string filterString, object filterParams = null)
         {
             _requestObject.FilterString = filterString;
+            _requestObject.FilterParameters = new Dictionary<string, object> { };
+
+            if (filterParams != null) 
+            {
+                foreach (var prop in filterParams.GetType().GetProperties()) 
+                {
+                    _requestObject.FilterParameters.Add(prop.Name, prop.GetValue(filterParams));
+                }
+            }
+
             return this as ISqlDataApi;
         }
 
@@ -158,14 +173,10 @@ namespace FalconSoft.SqlDataApi.Client
                 _requestObject.Select = string.Join(", ", typeof(T).GetProperties().Select(p => p.Name));
             }
 
-            var token = GetToken();
+            var authToken = GetToken();
             using (var webClient = new WebClientEx())
             {
-                if (!string.IsNullOrWhiteSpace(token))
-                {
-                    webClient.Headers.Add("Authorization", $"Bearer {token}");
-                }
-
+                url = ApplyAuthentications(url, authToken, webClient);
                 var response = webClient.Post<QueryInfoRequestObject, QueryResult>(url, _requestObject);
                 return TableToList<T>(response.Table);
             }
@@ -197,17 +208,30 @@ namespace FalconSoft.SqlDataApi.Client
                 ItemsToDelete = itemsToDelete
             };
 
-            var token = GetToken();
+            var authToken = GetToken();
             using (var webClient = new WebClientEx())
             {
-                if (!string.IsNullOrWhiteSpace(token))
-                {
-                    webClient.Headers.Add("Authorization", $"Bearer {token}");
-                }
+                url = ApplyAuthentications(url, authToken, webClient);
                 var saveStatus = webClient.Post<SaveDataDto, SaveInfo>(url, saveDataDto);
                 return saveStatus;
             }
         }
+
+        private static string ApplyAuthentications(string url, string authToken, WebClientEx webClient)
+        {
+            if (!string.IsNullOrWhiteSpace(authToken))
+            {
+                webClient.Headers.Add("Authorization", $"Bearer {authToken}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_accessToken))
+            {
+                url += $"{((url.IndexOf('?') > 0) ? "&" : "?")}$accessToken={_accessToken}";
+            }
+
+            return url;
+        }
+
         private string GetToken()
         {
             if (string.IsNullOrWhiteSpace(_authenticationToken))
