@@ -170,13 +170,13 @@ namespace FalconSoft.SqlDataApi.Client
             // if select is not specified, drive it through list of properties
             if (string.IsNullOrWhiteSpace(_requestObject.Select))
             {
-                _requestObject.Select = string.Join(", ", typeof(T).GetProperties().Select(p => p.Name));
+                _requestObject.Select = CreateSelectFromType(typeof(T));
             }
 
             var authToken = GetToken();
             using (var webClient = new WebClientEx())
             {
-                url = ApplyAuthentications(url, authToken, webClient);
+                url = ApplyAuthentication(url, authToken, webClient);
                 var response = webClient.Post<QueryInfoRequestObject, QueryResult>(url, _requestObject);
                 return TableToList<T>(response.Table);
             }
@@ -211,13 +211,13 @@ namespace FalconSoft.SqlDataApi.Client
             var authToken = GetToken();
             using (var webClient = new WebClientEx())
             {
-                url = ApplyAuthentications(url, authToken, webClient);
+                url = ApplyAuthentication(url, authToken, webClient);
                 var saveStatus = webClient.Post<SaveDataDto, SaveInfo>(url, saveDataDto);
                 return saveStatus;
             }
         }
 
-        private static string ApplyAuthentications(string url, string authToken, WebClientEx webClient)
+        private static string ApplyAuthentication(string url, string authToken, WebClientEx webClient)
         {
             if (!string.IsNullOrWhiteSpace(authToken))
             {
@@ -230,6 +230,52 @@ namespace FalconSoft.SqlDataApi.Client
             }
 
             return url;
+        }
+
+        private string CreateSelectFromType(Type type)
+        {
+            var fields = new List<string>();
+
+            void populateProperies(Type type, List<string> fields, string prefix = null)
+            {
+                foreach (var prop in type.GetProperties())
+                {
+                    var propType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+
+                    var fieldAttribute = prop.GetCustomAttribute<SqlFieldAttribute>();
+
+                    if (fieldAttribute?.Ignore == true)
+                    {
+                        continue;
+                    }
+
+                    if (!propType.IsValueType && propType != typeof(DateTime) && propType != typeof(string))
+                    {
+                        populateProperies(propType, fields, fieldAttribute?.Prefix);
+                    }
+                    else if (fieldAttribute == null)
+                    {
+                        fields.Add(prop.Name);
+                    }
+                    else if (fieldAttribute.Ignore)
+                    {
+                        continue;
+                    }
+                    else if (string.IsNullOrWhiteSpace(fieldAttribute.SqlExpression))
+                    {
+                        fields.Add(fieldAttribute.FieldName);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(fieldAttribute.SqlExpression))
+                    {
+                        // in this case fieldName is an optional field and can be defined in sql expression 
+                        fields.Add($"{fieldAttribute.SqlExpression} {fieldAttribute.FieldName}".Trim());
+                    }
+                }
+            }
+
+            populateProperies(type, fields);
+
+            return string.Join(", ", fields);
         }
 
         private string GetToken()
@@ -279,20 +325,40 @@ namespace FalconSoft.SqlDataApi.Client
             for (int i = 0; i < table.FieldNames.Length; i++) { dict.Add(table.FieldNames[i], i); }
             var props = typeof(T).GetProperties();
 
-            foreach (var row in table.Rows)
+            void assignProperties(object item, object[] row) 
             {
-                var item = Activator.CreateInstance<T>();
-
-                foreach (var prop in props)
+                foreach (var prop in item.GetType().GetProperties())
                 {
+                    var propType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+                    var fieldAttribute = prop.GetCustomAttribute<SqlFieldAttribute>();
+
+                    if (fieldAttribute?.Ignore == true)
+                    {
+                        continue;
+                    }
+                    if (!propType.IsValueType && propType != typeof(DateTime) && propType != typeof(string))
+                    {
+                        // create a complex object
+                        var objectValue = Activator.CreateInstance(prop.GetType());
+                        prop.SetValue(item, objectValue);
+                        assignProperties(objectValue, row);
+                    }
+
                     var ind = dict.ContainsKey(prop.Name) ? dict[prop.Name] : -1;
 
                     if (ind >= 0)
                     {
-                        SetValue<T>(item, prop, row[ind]);
+                        SetValue(item, prop, row[ind]);
                     }
                 }
 
+
+            }
+
+            foreach (var row in table.Rows)
+            {
+                var item = Activator.CreateInstance<T>();
+                assignProperties(item, row);
                 result.Add(item);
             }
 
