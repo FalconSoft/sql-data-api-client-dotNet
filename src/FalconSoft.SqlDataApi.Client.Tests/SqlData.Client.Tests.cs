@@ -34,12 +34,12 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         [Fact]
         public void Test1()
         {
-            SqlDataApi.SetBaseUrl("https://localhost:44308");
-            SqlDataApi.SetAuthentication("pp12-token-21pp");
+            SqlDataApi.SetBaseUrl("https://localhost:44302");
+            SqlDataApi.SetAuthentication("121212-token-211212");
 
             var items = SqlDataApi
-                .Create("my-laptop-sql")
-                .TableOrView("pavlo.SampleSuperstoreSales")
+                .Create("SQL-Shared")
+                .TableOrView("test1.Sample100_ToDelete")
                 .Filter("Country = @country", new { country = "UK"})
                 .RunQuery<TestObject>();
 
@@ -47,8 +47,8 @@ namespace FalconSoft.SqlDataApi.Client.Tests
 
             items[0].OrderQuantity = items[0].OrderQuantity + 10;
             var status = SqlDataApi
-                .Create("my-laptop-sql")
-                .TableOrView("pavlo.SampleSuperstoreSales")
+                .Create("SQL-Shared")
+                .TableOrView("test1.Sample100_ToDelete")
                 .Save(items);
 
             Assert.NotNull(status);

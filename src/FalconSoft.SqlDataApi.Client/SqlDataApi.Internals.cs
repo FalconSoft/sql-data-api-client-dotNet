@@ -1,10 +1,10 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FalconSoft.SqlDataApi.Client
 {
@@ -51,16 +51,19 @@ namespace FalconSoft.SqlDataApi.Client
             try
             {
                 Headers.Add("Content-Type", "application/json");
-                var responseJson = UploadString(url, "POST", JsonConvert.SerializeObject(requestBody));
-                var response = JsonConvert.DeserializeObject<TResponse>(responseJson);
+                var responseJson = UploadString(url, "POST", JsonSerializer.Serialize(requestBody));
+                var response = JsonSerializer.Deserialize<TResponse>(responseJson);
                 return response;
             }
             catch (WebException ex)
             {
                 string msg = "";
-                using (var r = new StreamReader(ex.Response?.GetResponseStream()))
+                if (ex.Response == null)
                 {
-                    msg = r.ReadToEnd(); // access the reponse message
+                    using (var r = new StreamReader(ex.Response?.GetResponseStream()))
+                    {
+                        msg = r.ReadToEnd(); // access the reponse message
+                    }
                 }
 
                 // make sure it has meaningfull message
@@ -102,13 +105,16 @@ namespace FalconSoft.SqlDataApi.Client
 
         internal class TableDto
         {
+            [JsonConverter(typeof(JsonStringEnumConverter))]
             public enum ConsolidatedDataTypes { String, LargeString, WholeNumber, BigIntNumber, FloatNumber, DateTime, Boolean, Text, Binary }
 
-            [JsonProperty("fieldDataTypes", ItemConverterType = typeof(StringEnumConverter))]
+            [JsonPropertyName("fieldDataTypes")]
             public ConsolidatedDataTypes[] FieldDataTypes { get; set; }
 
+            [JsonPropertyName("fieldNames")]
             public string[] FieldNames { get; set; }
 
+            [JsonPropertyName("rows")]
             public IList<object[]> Rows { get; set; }
         }
 
@@ -118,7 +124,7 @@ namespace FalconSoft.SqlDataApi.Client
 
             public string TableAlias { get; set; }
 
-            [JsonConverter(typeof(StringEnumConverter))]
+            [JsonConverter(typeof(JsonStringEnumConverter))]
             public JoinTypes JoinType { get; set; }
 
             public string JoinCondition { get; set; }
@@ -128,9 +134,10 @@ namespace FalconSoft.SqlDataApi.Client
 
         internal class QueryResult
         {
-            [JsonConverter(typeof(StringEnumConverter))]
+            [JsonConverter(typeof(JsonStringEnumConverter))]
             public ResultTypes ResultType { get; set; }
 
+            [JsonPropertyName("table")]
             public TableDto Table { get; set; }
 
             public IList<Dictionary<string, object>> Items { get; set; }
@@ -141,7 +148,7 @@ namespace FalconSoft.SqlDataApi.Client
             {
                 public string FieldName { get; set; }
 
-                [JsonConverter(typeof(StringEnumConverter))]
+                [JsonConverter(typeof(JsonStringEnumConverter))]
                 public TableDto.ConsolidatedDataTypes DataType { get; set; }
             }
 

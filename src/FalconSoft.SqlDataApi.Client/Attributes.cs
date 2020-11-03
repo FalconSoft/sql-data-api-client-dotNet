@@ -20,6 +20,9 @@ namespace FalconSoft.SqlDataApi.Client
         public string Prefix { get; set; }
 
         public bool Ignore { get; set; }
+
+        public bool SerializeObject { get; set; }
+
     }
 
 }

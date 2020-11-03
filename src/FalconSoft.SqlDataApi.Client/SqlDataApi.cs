@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 
 namespace FalconSoft.SqlDataApi.Client
 {
@@ -302,6 +301,41 @@ namespace FalconSoft.SqlDataApi.Client
             return _authenticationToken;
         }
 
+        private object JsonElementToObject(JsonElement jsonElement)
+        {
+            if (jsonElement.ValueKind == JsonValueKind.Null || jsonElement.ValueKind == JsonValueKind.Undefined)
+            {
+                return null;
+            }
+            if (jsonElement.ValueKind == JsonValueKind.True)
+            {
+                return true;
+            }
+            if (jsonElement.ValueKind == JsonValueKind.False)
+            {
+                return false;
+            }
+
+            if (jsonElement.ValueKind == JsonValueKind.Array)
+            {
+                return jsonElement.EnumerateArray()
+                    .Select(r => JsonElementToObject(r))
+                    .ToArray();
+            }
+
+            if (jsonElement.ValueKind == JsonValueKind.String)
+            {
+                var str = jsonElement.GetString();
+                return DateTime.TryParse(str, out var dt) ? dt : (object)str;
+            }
+
+            if (jsonElement.ValueKind == JsonValueKind.Number) 
+            {
+                return jsonElement.GetDouble();
+            }
+            return jsonElement.GetRawText();
+        }
+
         /// <summary>
         /// Set Value and change type if needed or if it is possible
         /// </summary>
@@ -309,6 +343,10 @@ namespace FalconSoft.SqlDataApi.Client
         {
             if (prop.PropertyType.Name != value?.GetType()?.Name)
             {
+                if (value is JsonElement) 
+                {
+                    value = JsonElementToObject((JsonElement)value);
+                }
                 var tp = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
                 value = (value == null) ? null : Convert.ChangeType(value, tp);
             }
@@ -339,7 +377,7 @@ namespace FalconSoft.SqlDataApi.Client
                     if (!propType.IsValueType && propType != typeof(DateTime) && propType != typeof(string))
                     {
                         // create a complex object
-                        var objectValue = Activator.CreateInstance(prop.GetType());
+                        var objectValue = Activator.CreateInstance(prop.PropertyType);
                         prop.SetValue(item, objectValue);
                         assignProperties(objectValue, row);
                     }
