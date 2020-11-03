@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -8,15 +9,20 @@ using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FalconSoft.SqlDataApi.Client
 {
     public class SaveInfo
     {
+        [JsonPropertyName("inserted")]
+
         public int Inserted { get; set; }
 
+        [JsonPropertyName("updated")]
         public int Updated { get; set; }
 
+        [JsonPropertyName("deleted")]
         public int Deleted { get; set; }
     }
 
@@ -42,7 +48,7 @@ namespace FalconSoft.SqlDataApi.Client
 
         SaveInfo Save<T>(IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null);
 
-        IList<T> RunQuery<T>() where T : new();
+        IList<T> RunQuery<T>();
     }
 
     public partial class SqlDataApi : ISqlDataApi
@@ -51,12 +57,11 @@ namespace FalconSoft.SqlDataApi.Client
         private static string _authenticationToken;
         private static string _baseUrl;
         private static string _accessToken;
-
         private readonly string _connectionName;
-
         private readonly QueryInfoRequestObject _requestObject = new QueryInfoRequestObject();
 
         private string _tableOrViewName;
+        private bool _isDynamicType;
 
         public static void SetAuthentication(string userName, string password)
         {
@@ -87,9 +92,9 @@ namespace FalconSoft.SqlDataApi.Client
             _requestObject.FilterString = filterString;
             _requestObject.FilterParameters = new Dictionary<string, object> { };
 
-            if (filterParams != null) 
+            if (filterParams != null)
             {
-                foreach (var prop in filterParams.GetType().GetProperties()) 
+                foreach (var prop in filterParams.GetType().GetProperties())
                 {
                     _requestObject.FilterParameters.Add(prop.Name, prop.GetValue(filterParams));
                 }
@@ -146,7 +151,12 @@ namespace FalconSoft.SqlDataApi.Client
             return this as ISqlDataApi;
         }
 
-        public IList<T> RunQuery<T>() where T : new()
+        public IList<dynamic> RunQuery()
+        {
+            throw new NotFiniteNumberException();
+        }
+
+        public IList<T> RunQuery<T>()
         {
 
             if (string.IsNullOrWhiteSpace(_tableOrViewName))
@@ -166,8 +176,10 @@ namespace FalconSoft.SqlDataApi.Client
 
             var url = $"{_baseUrl.Trim('/')}/sql-data-api/{_connectionName}/query/{_tableOrViewName}";
 
+            _isDynamicType = typeof(object) == typeof(T);
+
             // if select is not specified, drive it through list of properties
-            if (string.IsNullOrWhiteSpace(_requestObject.Select))
+            if (!_isDynamicType && string.IsNullOrWhiteSpace(_requestObject.Select))
             {
                 _requestObject.Select = CreateSelectFromType(typeof(T));
             }
@@ -177,7 +189,7 @@ namespace FalconSoft.SqlDataApi.Client
             {
                 url = ApplyAuthentication(url, authToken, webClient);
                 var response = webClient.Post<QueryInfoRequestObject, QueryResult>(url, _requestObject);
-                return TableToList<T>(response.Table);
+                return _isDynamicType ? TableToListOfDynamics(response.Table).Cast<T>().ToList() : TableToList<T>(response.Table);
             }
         }
 
@@ -329,7 +341,7 @@ namespace FalconSoft.SqlDataApi.Client
                 return DateTime.TryParse(str, out var dt) ? dt : (object)str;
             }
 
-            if (jsonElement.ValueKind == JsonValueKind.Number) 
+            if (jsonElement.ValueKind == JsonValueKind.Number)
             {
                 return jsonElement.GetDouble();
             }
@@ -343,7 +355,7 @@ namespace FalconSoft.SqlDataApi.Client
         {
             if (prop.PropertyType.Name != value?.GetType()?.Name)
             {
-                if (value is JsonElement) 
+                if (value is JsonElement)
                 {
                     value = JsonElementToObject((JsonElement)value);
                 }
@@ -354,7 +366,7 @@ namespace FalconSoft.SqlDataApi.Client
             prop.SetValue(item, value);
         }
 
-        private IList<T> TableToList<T>(TableDto table) where T : new()
+        private IList<T> TableToList<T>(TableDto table)
         {
             var result = new List<T>();
 
@@ -363,7 +375,7 @@ namespace FalconSoft.SqlDataApi.Client
             for (int i = 0; i < table.FieldNames.Length; i++) { dict.Add(table.FieldNames[i], i); }
             var props = typeof(T).GetProperties();
 
-            void assignProperties(object item, object[] row) 
+            void assignProperties(object item, object[] row)
             {
                 foreach (var prop in item.GetType().GetProperties())
                 {
@@ -403,6 +415,72 @@ namespace FalconSoft.SqlDataApi.Client
             return result;
         }
 
+        private IList<dynamic> TableToListOfDynamics(TableDto table)
+        {
+            var result = new List<dynamic>();
+
+
+            var dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < table.FieldNames.Length; i++) { dict.Add(table.FieldNames[i], i); }
+
+
+            foreach (var row in table.Rows)
+            {
+                var item = new ExpandoObject();
+                var rowDict = item as IDictionary<string, object>;
+
+                for (int i = 0; i < table.FieldNames.Length; i++)
+                {
+                    var fieldName = table.FieldNames[i];
+                    var dataType = table.FieldDataTypes[i];
+                    var value = row[i];
+                    rowDict[fieldName] = EnsureValue(value, dataType);
+                }
+
+
+                // assignProperties(item, row);
+                result.Add(item);
+            }
+
+            return result;
+        }
+
+        private object EnsureValue(object value, TableDto.ConsolidatedDataTypes dataType)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            if (value is JsonElement &&
+                (((JsonElement)value).ValueKind == JsonValueKind.Null || ((JsonElement)value).ValueKind == JsonValueKind.Undefined))
+            {
+                return null;
+            }
+
+            if (dataType == TableDto.ConsolidatedDataTypes.DateTime)
+            {
+                return DateTime.Parse(value.ToString());
+            }
+            
+            if (dataType == TableDto.ConsolidatedDataTypes.FloatNumber)
+            {
+                return double.Parse(value.ToString());
+            }
+
+            if (dataType == TableDto.ConsolidatedDataTypes.WholeNumber)
+            {
+                return int.Parse(value.ToString());
+            }
+
+            if (dataType == TableDto.ConsolidatedDataTypes.Boolean)
+            {
+                return bool.Parse(value.ToString());
+            }
+
+            return value.ToString();
+        }
+
         private TableDto ItemsToTable<T>(IEnumerable<T> items)
         {
             var table = new TableDto { };
@@ -422,6 +500,11 @@ namespace FalconSoft.SqlDataApi.Client
                     var propName = table.FieldNames[i];
                     var value = item.GetType().GetProperty(propName).GetValue(item);
                     row[i] = (value is DateTime) ? ((DateTime)value).ToString("yyyy-MM-dd HH:mm:ss") : value;
+
+                    if (value is DateTime && (DateTime)value < new DateTime(1910, 1, 1))
+                    {
+                        row[i] = null;
+                    }
                 }
                 table.Rows.Add(row);
             }

@@ -29,7 +29,7 @@ namespace FalconSoft.SqlDataApi.Client
         /// </summary>
         public int Timeout { get; }
 
-        public WebClientEx() : this(1000 * 10) { }
+        public WebClientEx() : this(5 * 60 * 1000) { }
 
         public WebClientEx(int timeout)
         {
@@ -58,7 +58,7 @@ namespace FalconSoft.SqlDataApi.Client
             catch (WebException ex)
             {
                 string msg = "";
-                if (ex.Response == null)
+                if (ex.Response != null)
                 {
                     using (var r = new StreamReader(ex.Response?.GetResponseStream()))
                     {
