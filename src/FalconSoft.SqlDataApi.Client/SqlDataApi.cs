@@ -483,14 +483,20 @@ namespace FalconSoft.SqlDataApi.Client
 
         private TableDto ItemsToTable<T>(IEnumerable<T> items)
         {
+
             var table = new TableDto { };
             var firstItem = true;
+            var isDynamic = false;
             foreach (var item in items)
             {
                 if (firstItem)
                 {
+                    var dataType = item.GetType();
+                    isDynamic = item is IDictionary<string, object>;
                     firstItem = false;
-                    table.FieldNames = item.GetType().GetProperties().Select(p => p.Name).ToArray();
+                    table.FieldNames = (isDynamic)?
+                        (item as IDictionary<string, object>).Keys.ToArray()
+                        : dataType.GetProperties().Select(p => p.Name).ToArray();
                     table.Rows = new List<object[]>();
                 }
 
@@ -498,7 +504,8 @@ namespace FalconSoft.SqlDataApi.Client
                 for (int i = 0; i < table.FieldNames.Length; i++)
                 {
                     var propName = table.FieldNames[i];
-                    var value = item.GetType().GetProperty(propName).GetValue(item);
+                    var value = isDynamic? (item as IDictionary<string, object>)[propName]
+                        :  item.GetType().GetProperty(propName).GetValue(item);
                     row[i] = (value is DateTime) ? ((DateTime)value).ToString("yyyy-MM-dd HH:mm:ss") : value;
 
                     if (value is DateTime && (DateTime)value < new DateTime(1910, 1, 1))
