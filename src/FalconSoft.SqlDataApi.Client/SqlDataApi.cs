@@ -36,6 +36,14 @@ namespace FalconSoft.SqlDataApi.Client
 
         ISqlDataApi Select(string fields);
 
+        ISqlDataApi InnerJoin(string tableWithAlias, string joinCondition);
+        
+        ISqlDataApi LeftJoin(string tableWithAlias, string joinCondition);
+        
+        ISqlDataApi RightJoin(string tableWithAlias, string joinCondition);
+
+        ISqlDataApi FullJoin(string tableWithAlias, string joinCondition);
+
         ISqlDataApi Filter(string filterString, object filterParams = null);
 
         ISqlDataApi OrderBy(string orderByString);
@@ -123,13 +131,28 @@ namespace FalconSoft.SqlDataApi.Client
 
         public ISqlDataApi Table(string table)
         {
-            _tableOrViewName = table;
-            return this as ISqlDataApi;
+            return TableOrView(table);
+        }
+
+        public ISqlDataApi View(string view)
+        {
+            return TableOrView(view);
         }
 
         public ISqlDataApi TableOrView(string tableOrView)
         {
-            _tableOrViewName = tableOrView;
+            tableOrView = tableOrView.Trim();
+            var spaceIndex = tableOrView.IndexOf(' ');
+            if (spaceIndex > 0)
+            {
+                _tableOrViewName = tableOrView.Substring(0, spaceIndex).Trim();
+                _requestObject.MainTableAlias = tableOrView.Substring(spaceIndex).Trim();
+            }
+            else
+            {
+                _tableOrViewName = tableOrView;
+            }
+
             return this as ISqlDataApi;
         }
 
@@ -145,16 +168,30 @@ namespace FalconSoft.SqlDataApi.Client
             return this as ISqlDataApi;
         }
 
-        public ISqlDataApi View(string view)
+        public ISqlDataApi InnerJoin(string tableWithAlias, string joinCondition)
         {
-            _tableOrViewName = view;
-            return this as ISqlDataApi;
+            AddJoin(JoinTypes.InnerJoin, tableWithAlias, joinCondition);
+            return this;
         }
 
-        public IList<dynamic> RunQuery()
+        public ISqlDataApi LeftJoin(string tableWithAlias, string joinCondition)
         {
-            throw new NotFiniteNumberException();
+            AddJoin(JoinTypes.LeftJoin, tableWithAlias, joinCondition);
+            return this;
         }
+
+        public ISqlDataApi RightJoin(string tableWithAlias, string joinCondition)
+        {
+            AddJoin(JoinTypes.RightJoin, tableWithAlias, joinCondition);
+            return this;
+        }
+
+        public ISqlDataApi FullJoin(string tableWithAlias, string joinCondition)
+        {
+            AddJoin(JoinTypes.FullJoin, tableWithAlias, joinCondition);
+            return this;
+        }
+
 
         public IList<T> RunQuery<T>()
         {
@@ -517,6 +554,27 @@ namespace FalconSoft.SqlDataApi.Client
             }
 
             return table;
+        }
+
+        private void AddJoin(JoinTypes joinType, string tableWithAlias, string joinCondition)
+        {
+            if (this._requestObject.TablesJoin == null)
+            {
+                this._requestObject.TablesJoin = new List<TableJoin>();
+            }
+
+            var join = new TableJoin { JoinType = joinType };
+            var spaceIndex = tableWithAlias.IndexOf(' ');
+            if (spaceIndex < 0)
+            {
+                throw new ApplicationException("Table name should be specified with alias e.g. dbo.tableName t");
+            }
+
+            join.TableName = tableWithAlias.Substring(0, spaceIndex).Trim();
+            join.TableAlias = tableWithAlias.Substring(spaceIndex).Trim();
+            join.JoinCondition = joinCondition;
+
+            this._requestObject.TablesJoin.Add(join);
         }
 
     }
