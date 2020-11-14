@@ -10,7 +10,7 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         public SqlDataApiTests()
         {
             SqlDataApi.SetBaseUrl("https://localhost:44302");
-            SqlDataApi.SetAuthentication("12121212-token-212121212");
+            SqlDataApi.SetAuthentication("12121212-token-21212121");
         }
 
         private class SimpleObject
@@ -52,6 +52,47 @@ namespace FalconSoft.SqlDataApi.Client.Tests
 
             Assert.Equal(7, items.Count);
             Assert.Equal(0, items.Count(r => string.IsNullOrWhiteSpace(r.Product?.ProductName)));
+        }
+
+        [Fact]
+        public void FilterNull()
+        {
+            var items = SqlDataApi
+                .Create("SQL-Shared")
+                .TableOrView("test1.Sample100")
+                .Filter("OrderPriority is null")
+                .RunQuery<TestObject>();
+
+            Assert.Equal(3, items.Count);
+
+            items = SqlDataApi
+                .Create("SQL-Shared")
+                .TableOrView("test1.Sample100")
+                .Filter("OrderPriority is not null")
+                .RunQuery<TestObject>();
+
+            Assert.Equal(97, items.Count);
+        }
+
+        [Fact]
+        public void FilterNullInVariable()
+        {
+            string priority = null;
+            var items = SqlDataApi
+                .Create("SQL-Shared")
+                .TableOrView("test1.Sample100")
+                .Filter("OrderPriority in @priorities", new { priorities = new[] { priority } })
+                .RunQuery<TestObject>();
+
+            Assert.Equal(3, items.Count);
+
+            items = SqlDataApi
+                .Create("SQL-Shared")
+                .TableOrView("test1.Sample100")
+                .Filter("OrderPriority not in @priorities", new { priorities = new[] { priority } })
+                .RunQuery<TestObject>();
+
+            Assert.Equal(97, items.Count);
         }
 
         [Fact]
