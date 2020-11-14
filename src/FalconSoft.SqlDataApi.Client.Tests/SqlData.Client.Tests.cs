@@ -7,6 +7,7 @@ namespace FalconSoft.SqlDataApi.Client.Tests
     public class SqlDataApiTests
     {
         private readonly string TestConnectionName = "SQL-Shared";
+
         public SqlDataApiTests()
         {
             SqlDataApi.SetBaseUrl("https://localhost:44302");
@@ -28,7 +29,7 @@ namespace FalconSoft.SqlDataApi.Client.Tests
             public int OrderQuantity { get; set; }
         }
 
-        public class TestObject
+        private class TestObject: SimpleObject
         {
             public Product Product { get; set; }
         }
@@ -45,29 +46,28 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         public void SimpleTest()
         {
             var items = SqlDataApi
-                .Create("SQL-Shared")
+                .Create(TestConnectionName)
                 .TableOrView("test1.Sample100")
                 .Filter("Country = @country", new { country = "UK" })
                 .RunQuery<TestObject>();
 
             Assert.Equal(7, items.Count);
-            Assert.Equal(0, items.Count(r => string.IsNullOrWhiteSpace(r.Product?.ProductName)));
+            Assert.Empty(items.Where(r => string.IsNullOrWhiteSpace(r.Product?.ProductName)));
+            Assert.Empty(items.Where(r => string.IsNullOrWhiteSpace(r.Country)));
         }
 
         [Fact]
         public void FilterNull()
         {
-            var items = SqlDataApi
-                .Create("SQL-Shared")
-                .TableOrView("test1.Sample100")
+            var sqlApi = SqlDataApi.Create(TestConnectionName).Table("test1.Sample100");
+
+            var items = sqlApi
                 .Filter("OrderPriority is null")
                 .RunQuery<TestObject>();
 
             Assert.Equal(3, items.Count);
 
-            items = SqlDataApi
-                .Create("SQL-Shared")
-                .TableOrView("test1.Sample100")
+            items = sqlApi
                 .Filter("OrderPriority is not null")
                 .RunQuery<TestObject>();
 
@@ -79,7 +79,7 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         {
             string priority = null;
             var items = SqlDataApi
-                .Create("SQL-Shared")
+                .Create(TestConnectionName)
                 .TableOrView("test1.Sample100")
                 .Filter("OrderPriority in @priorities", new { priorities = new[] { priority } })
                 .RunQuery<TestObject>();
@@ -87,7 +87,7 @@ namespace FalconSoft.SqlDataApi.Client.Tests
             Assert.Equal(3, items.Count);
 
             items = SqlDataApi
-                .Create("SQL-Shared")
+                .Create(TestConnectionName)
                 .TableOrView("test1.Sample100")
                 .Filter("OrderPriority not in @priorities", new { priorities = new[] { priority } })
                 .RunQuery<TestObject>();
@@ -98,16 +98,16 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         [Fact]
         public void DatesFilterTest()
         {
-            var items = SqlDataApi
-                .Create("SQL-Shared")
+            var sqlApi = SqlDataApi.Create(TestConnectionName);
+
+            var items = sqlApi
                 .TableOrView("test1.Sample100")
                 .Filter("OrderDate = @date", new { date = new DateTime(2017, 2, 25) })
                 .RunQuery<TestObject>();
 
             Assert.Equal(32, items.Count);
 
-            items = SqlDataApi
-                .Create("SQL-Shared")
+            items = sqlApi
                 .TableOrView("test1.Sample100")
                 .Filter("OrderDate in @dates", new { dates = new[] { new DateTime(2017, 2, 25), new DateTime(2017, 2, 27) }  })
                 .RunQuery<TestObject>();
@@ -119,7 +119,7 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         public void LimitTest()
         {
             var items = SqlDataApi
-                .Create("SQL-Shared")
+                .Create(TestConnectionName)
                 .TableOrView("test1.Sample100")
                 .Limit(3)
                 .RunQuery<TestObject>();
@@ -131,7 +131,7 @@ namespace FalconSoft.SqlDataApi.Client.Tests
         public void ReadWrite()
         {
             var items = SqlDataApi
-                .Create("SQL-Shared")
+                .Create(TestConnectionName)
                 .TableOrView("test1.Sample100")
                 .Filter("Country = @country", new { country = "UK" })
                 .RunQuery<SimpleObject>();
@@ -161,6 +161,53 @@ namespace FalconSoft.SqlDataApi.Client.Tests
             Assert.Equal(56, items.Count);
             Assert.Equal(0, items.Count(i => string.IsNullOrWhiteSpace(i.Employee)));
         }
+
+        [Fact]
+        public void GroupByWithJoin()
+        {
+            var items = SqlDataApi
+                .Create(TestConnectionName)
+                .TableOrView("test1.NorthwindOrders o")
+                .InnerJoin("test1.NorthwindEmployees e", "o.EmployeeId = e.EmployeeId")
+                .Select("GroupBy|Concat(e.FirstName, ' ', e.LastName) Employee,COUNT(1) Count, Sum(Freight) Freight")
+                .Filter("o.ShipCountry = @country", new { country = "UK" })
+                .RunQuery<dynamic>();
+
+            Assert.Equal(9, items.Count);
+            Assert.Equal(0, items.Count(i => string.IsNullOrWhiteSpace(i.Employee)));
+            Assert.Equal(56, items.Sum(r => r.Count));
+        }
+
+        [Fact]
+        public void GroupByTest1()
+        {
+            var items = SqlDataApi
+                .Create(TestConnectionName)
+                .TableOrView("test1.Sample100")
+                .Select("GroupBy|OrderPriority, COUNT(1) Count, SUM(OrderQuantity) Quantities")
+                .RunQuery<dynamic>();
+
+            Assert.Equal(6, items.Count);
+            Assert.Equal(100, items.Sum(r => r.Count));
+            // we have one null group
+            Assert.Single(items.Where(r => r.OrderPriority == null));
+        }
+
+        [Fact]
+        public void GroupByTestWithNullFilter()
+        {
+            var items = SqlDataApi
+                .Create(TestConnectionName)
+                .TableOrView("test1.Sample100")
+                .Select("GroupBy|OrderPriority, COUNT(1) Count, SUM(OrderQuantity) Quantities")
+                .Filter("OrderPriority is not null")
+                .RunQuery<dynamic>();
+
+            Assert.Equal(5, items.Count);
+            Assert.Equal(97, items.Sum(r => r.Count));
+            Assert.Empty(items.Where(r => r.OrderPriority == null));
+        }
+
 
     }
 }

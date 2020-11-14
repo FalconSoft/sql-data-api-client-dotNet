@@ -35,6 +35,8 @@ namespace FalconSoft.SqlDataApi.Client
         ISqlDataApi View(string view);
 
         ISqlDataApi Select(string fields);
+        
+        ISqlDataApi Select(IEnumerable<string> fields);
 
         ISqlDataApi InnerJoin(string tableWithAlias, string joinCondition);
         
@@ -66,7 +68,7 @@ namespace FalconSoft.SqlDataApi.Client
         private static string _baseUrl;
         private static string _accessToken;
         private readonly string _connectionName;
-        private readonly QueryInfoRequestObject _requestObject = new QueryInfoRequestObject();
+        private QueryInfoRequestObject _requestObject = new QueryInfoRequestObject();
 
         private string _tableOrViewName;
         private bool _isDynamicType;
@@ -121,6 +123,11 @@ namespace FalconSoft.SqlDataApi.Client
         {
             _requestObject.Select = fields;
             return this as ISqlDataApi;
+        }
+        
+        public ISqlDataApi Select(IEnumerable<string> fields)
+        {
+            return Select(fields != null? string.Join(", ", fields): null);
         }
 
         public ISqlDataApi Skip(int skipCount)
@@ -226,6 +233,8 @@ namespace FalconSoft.SqlDataApi.Client
             {
                 url = ApplyAuthentication(url, authToken, webClient);
                 var response = webClient.Post<QueryInfoRequestObject, QueryResult>(url, _requestObject);
+                // make sure next request object doesn't use any of existing setup
+                _requestObject = new QueryInfoRequestObject();
                 return _isDynamicType ? TableToListOfDynamics(response.Table).Cast<T>().ToList() : TableToList<T>(response.Table);
             }
         }
