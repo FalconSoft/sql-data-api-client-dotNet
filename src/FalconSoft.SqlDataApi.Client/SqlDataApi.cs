@@ -56,7 +56,11 @@ namespace FalconSoft.SqlDataApi.Client
 
         ISqlDataApi Limit(int? number = null);
 
-        SaveInfo Save<T>(IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null);
+        SaveInfo Save<T>(IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null);
+
+        SaveInfo AppendData<T>(IEnumerable<T> itemsToSave, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null);
+
+        int SaveWithAutoId<T>(T item);
 
         IList<T> RunQuery<T>();
     }
@@ -239,7 +243,7 @@ namespace FalconSoft.SqlDataApi.Client
             }
         }
 
-        public SaveInfo Save<T>(IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null)
+        public SaveInfo Save<T>(IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null)
         {
             if (string.IsNullOrWhiteSpace(_tableOrViewName))
             {
@@ -256,8 +260,127 @@ namespace FalconSoft.SqlDataApi.Client
                 throw new ApplicationException("BaseUrl must be specified. please use a static method SqlDataApi.SetBaseUrl(...) or SetBaseUrl inside your pipe");
             }
 
-            var url = $"{_baseUrl.Trim('/')}/sql-data-api/{_connectionName}/save/{_tableOrViewName}";
+            var status = new SaveInfo();
+            var list = new List<T>();
+            foreach (var item in itemsToSave)
+            {
+                if (list.Count >= batchNumber)
+                {
+                    var s = Save("save", list);
 
+                    if (progressReportAction != null) 
+                    {
+                        progressReportAction(s);
+                    }
+
+                    status.Inserted += s.Inserted;
+                    status.Updated += s.Updated;
+                }
+                else
+                {
+                    list.Add(item);
+                }
+            }
+
+            var last = Save("save", list);
+
+            if (progressReportAction != null)
+            {
+                progressReportAction(last);
+            }
+
+            status.Inserted += last.Inserted;
+            status.Updated += last.Updated;
+
+            if (itemsToDelete != null && itemsToDelete.Length > 0)
+            {
+                Save("save", new object[0], itemsToDelete);
+                status.Deleted = itemsToDelete.Length;
+            }
+
+            return status;
+        }
+
+        public SaveInfo AppendData<T>(IEnumerable<T> itemsToSave, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null)
+        {
+            if (string.IsNullOrWhiteSpace(_tableOrViewName))
+            {
+                throw new ApplicationException("Table or View Name must be specified.");
+            }
+
+            if (string.IsNullOrWhiteSpace(_connectionName))
+            {
+                throw new ApplicationException("Connection Name must be specified.");
+            }
+
+            if (string.IsNullOrWhiteSpace(_baseUrl))
+            {
+                throw new ApplicationException("BaseUrl must be specified. please use a static method SqlDataApi.SetBaseUrl(...) or SetBaseUrl inside your pipe");
+            }
+
+            var status = new SaveInfo();
+            var list = new List<T>();
+            foreach (var item in itemsToSave)
+            {
+                if (list.Count >= batchNumber)
+                {
+                    var s = Save("append-data", list);
+
+                    if (progressReportAction != null)
+                    {
+                        progressReportAction(s);
+                    }
+
+                    status.Inserted += s.Inserted;
+                }
+                else
+                {
+                    list.Add(item);
+                }
+            }
+
+            var last = Save("append-data", list);
+
+            if (progressReportAction != null)
+            {
+                progressReportAction(last);
+            }
+
+            status.Inserted += last.Inserted;
+
+            return status;
+        }
+
+        public int SaveWithAutoId<T>(T item)
+        {
+            if (string.IsNullOrWhiteSpace(_tableOrViewName))
+            {
+                throw new ApplicationException("Table or View Name must be specified.");
+            }
+
+            if (string.IsNullOrWhiteSpace(_connectionName))
+            {
+                throw new ApplicationException("Connection Name must be specified.");
+            }
+
+            if (string.IsNullOrWhiteSpace(_baseUrl))
+            {
+                throw new ApplicationException("BaseUrl must be specified. please use a static method SqlDataApi.SetBaseUrl(...) or SetBaseUrl inside your pipe");
+            }
+
+            var url = $"{_baseUrl.Trim('/')}/sql-data-api/{_connectionName}/save-with-autoid/{_tableOrViewName}";
+            var authToken = GetToken();
+            using (var webClient = new WebClientEx())
+            {
+                url = ApplyAuthentication(url, authToken, webClient);
+                var result = webClient.Post<T, int>(url, item);
+                return result;
+            }
+        }
+
+        private SaveInfo Save<T>(string method, IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null)
+        {
+            var url = $"{_baseUrl.Trim('/')}/sql-data-api/{_connectionName}/{method}/{_tableOrViewName}";
             var table = ItemsToTable(itemsToSave);
             var saveDataDto = new SaveDataDto
             {
@@ -273,6 +396,7 @@ namespace FalconSoft.SqlDataApi.Client
                 return saveStatus;
             }
         }
+
 
         private static string ApplyAuthentication(string url, string authToken, WebClientEx webClient)
         {
@@ -552,7 +676,7 @@ namespace FalconSoft.SqlDataApi.Client
                     var propName = table.FieldNames[i];
                     var value = isDynamic? (item as IDictionary<string, object>)[propName]
                         :  item.GetType().GetProperty(propName).GetValue(item);
-                    row[i] = (value is DateTime) ? ((DateTime)value).ToString("yyyy-MM-dd HH:mm:ss") : value;
+                    row[i] = (value is DateTime) ? ((DateTime)value).ToString("yyyy-MM-dd HH:mm:ss.fff") : value;
 
                     if (value is DateTime && (DateTime)value < new DateTime(1910, 1, 1))
                     {
