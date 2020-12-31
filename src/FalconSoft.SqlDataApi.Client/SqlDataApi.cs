@@ -203,7 +203,6 @@ namespace FalconSoft.SqlDataApi.Client
             return this;
         }
 
-
         public IList<T> RunQuery<T>()
         {
 
@@ -260,37 +259,7 @@ namespace FalconSoft.SqlDataApi.Client
                 throw new ApplicationException("BaseUrl must be specified. please use a static method SqlDataApi.SetBaseUrl(...) or SetBaseUrl inside your pipe");
             }
 
-            var status = new SaveInfo();
-            var list = new List<T>();
-            foreach (var item in itemsToSave)
-            {
-                if (list.Count >= batchNumber)
-                {
-                    var s = Save("save", list);
-
-                    if (progressReportAction != null) 
-                    {
-                        progressReportAction(s);
-                    }
-
-                    status.Inserted += s.Inserted;
-                    status.Updated += s.Updated;
-                }
-                else
-                {
-                    list.Add(item);
-                }
-            }
-
-            var last = Save("save", list);
-
-            if (progressReportAction != null)
-            {
-                progressReportAction(last);
-            }
-
-            status.Inserted += last.Inserted;
-            status.Updated += last.Updated;
+            SaveInfo status = SaveInBatches("save", itemsToSave, batchNumber, progressReportAction);
 
             if (itemsToDelete != null && itemsToDelete.Length > 0)
             {
@@ -318,35 +287,7 @@ namespace FalconSoft.SqlDataApi.Client
                 throw new ApplicationException("BaseUrl must be specified. please use a static method SqlDataApi.SetBaseUrl(...) or SetBaseUrl inside your pipe");
             }
 
-            var status = new SaveInfo();
-            var list = new List<T>();
-            foreach (var item in itemsToSave)
-            {
-                if (list.Count >= batchNumber)
-                {
-                    var s = Save("append-data", list);
-
-                    if (progressReportAction != null)
-                    {
-                        progressReportAction(s);
-                    }
-
-                    status.Inserted += s.Inserted;
-                }
-                else
-                {
-                    list.Add(item);
-                }
-            }
-
-            var last = Save("append-data", list);
-
-            if (progressReportAction != null)
-            {
-                progressReportAction(last);
-            }
-
-            status.Inserted += last.Inserted;
+            SaveInfo status = SaveInBatches("append-data", itemsToSave, batchNumber, progressReportAction);
 
             return status;
         }
@@ -377,6 +318,47 @@ namespace FalconSoft.SqlDataApi.Client
                 return result;
             }
         }
+
+        private SaveInfo SaveInBatches<T>(string method, IEnumerable<T> itemsToSave, int batchNumber, Action<SaveInfo> progressReportAction)
+        {
+            var status = new SaveInfo();
+            var list = new List<T>();
+            foreach (var item in itemsToSave)
+            {
+                if (list.Count >= batchNumber)
+                {
+                    var s = Save(method, list);
+                    list.Clear();
+
+                    if (progressReportAction != null)
+                    {
+                        progressReportAction(s);
+                    }
+
+                    list.Add(item);
+
+                    status.Inserted += s.Inserted;
+                    status.Updated += s.Updated;
+                }
+                else
+                {
+                    list.Add(item);
+                }
+            }
+
+            var last = Save(method, list);
+            list.Clear();
+
+            if (progressReportAction != null)
+            {
+                progressReportAction(last);
+            }
+
+            status.Inserted += last.Inserted;
+            status.Updated += last.Updated;
+            return status;
+        }
+
 
         private SaveInfo Save<T>(string method, IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null)
         {
