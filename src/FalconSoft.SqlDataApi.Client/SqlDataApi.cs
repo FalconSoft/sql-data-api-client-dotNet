@@ -59,6 +59,8 @@ namespace FalconSoft.SqlDataApi.Client
         SaveInfo Save<T>(IEnumerable<T> itemsToSave, Dictionary<string, object>[] itemsToDelete = null, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null);
 
         SaveInfo AppendData<T>(IEnumerable<T> itemsToSave, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null);
+        
+        SaveInfo BulkInsert<T>(IEnumerable<T> itemsToSave, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null);
 
         int SaveWithAutoId<T>(T item);
 
@@ -292,6 +294,27 @@ namespace FalconSoft.SqlDataApi.Client
             return status;
         }
 
+        public SaveInfo BulkInsert<T>(IEnumerable<T> itemsToSave, int batchNumber = 2000, Action<SaveInfo> progressReportAction = null)
+        {
+            if (string.IsNullOrWhiteSpace(_tableOrViewName))
+            {
+                throw new ApplicationException("Table or View Name must be specified.");
+            }
+
+            if (string.IsNullOrWhiteSpace(_connectionName))
+            {
+                throw new ApplicationException("Connection Name must be specified.");
+            }
+
+            if (string.IsNullOrWhiteSpace(_baseUrl))
+            {
+                throw new ApplicationException("BaseUrl must be specified. please use a static method SqlDataApi.SetBaseUrl(...) or SetBaseUrl inside your pipe");
+            }
+
+            SaveInfo status = SaveInBatches("bulk-insert", itemsToSave, batchNumber, progressReportAction);
+
+            return status;
+        }
         public int SaveWithAutoId<T>(T item)
         {
             if (string.IsNullOrWhiteSpace(_tableOrViewName))
